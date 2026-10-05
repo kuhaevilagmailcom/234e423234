@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ChevronRight, CircleDotDashed, CircleGauge, FileText, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CircleDotDashed, CircleGauge, Crown, FileText, Medal, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import Admin from './Admin';
 import { api } from './api';
 import type { LeaderRow, MePayload, Statement } from './types';
@@ -180,7 +180,7 @@ function StatementRow({ s, selected, onClick }: { s: Statement; selected?: boole
   return <button className={`statement-row ${selected ? 'selected' : ''}`} onClick={onClick} disabled={!onClick}>
     <div className="statement-id">№{s.id}</div>
     <div className="statement-main"><b>{s.category}</b><span><i className={rarityClass(s.rarity)}>{s.rarity}</i> · {s.score}/100</span></div>
-    <strong>{format(s.value)} З</strong>
+    <strong>{format(s.value)} ₽</strong>
   </button>;
 }
 
@@ -216,9 +216,9 @@ function Upgrade({ statements, onChanged }: { statements: Statement[]; onChanged
     <div className="multis">{[1.5,2,3,5].map(m => <button className={m===multiplier?'active':''} onClick={() => setMultiplier(m)} key={m}>x{m}</button>)}</div>
 
     <div className="upgrade-pair">
-      <div><small>ТВОЯ ЗАЯВА</small><b>{source ? `${format(source.value)} З` : '—'}</b></div>
+      <div><small>ТВОЯ ЗАЯВА</small><b>{source ? `${format(source.value)} ₽` : '—'}</b></div>
       <span>→</span>
-      <div><small>ЦЕЛЬ</small><b>{preview ? `${format(preview.targetValue)} З` : '—'}</b></div>
+      <div><small>ЦЕЛЬ</small><b>{preview ? `${format(preview.targetValue)} ₽` : '—'}</b></div>
     </div>
 
     <div className="section-head"><div><h3>ВЫБЕРИ ЗАЯВУ</h3><span>она будет использована</span></div></div>
@@ -237,7 +237,7 @@ function Upgrade({ statements, onChanged }: { statements: Statement[]; onChanged
   </section>;
 }
 
-const wheelLabels = ['50 З','100 З','250 З','500 З','25 RP','50 RP','РЕДКАЯ','ЭПИК','x2','ДЖЕКПОТ'];
+const wheelLabels = ['25 ₽','50 ₽','75 ₽','100 ₽','125 ₽','150 ₽','10 RP','15 RP','20 RP','25 RP'];
 function polar(cx:number, cy:number, r:number, a:number){ const rad=(a-90)*Math.PI/180; return {x:cx+r*Math.cos(rad), y:cy+r*Math.sin(rad)}; }
 function sectorPath(i:number,total:number){ const a0=i*360/total, a1=(i+1)*360/total; const p0=polar(100,100,92,a0), p1=polar(100,100,92,a1); return `M100 100 L${p0.x} ${p0.y} A92 92 0 0 1 ${p1.x} ${p1.y} Z`; }
 
@@ -248,21 +248,21 @@ function Wheel({ me, onChanged }: { me: MePayload; onChanged: () => Promise<void
   const seg = 360 / wheelLabels.length;
   return <section className="screen">
     <div className="screen-title"><div><h2>КОЛЕСО УЧАСТКОВОГО</h2><p>Только виртуальные игровые награды</p></div></div>
-    <div className="wheel-status"><div><small>БЕСПЛАТНОЕ ВРАЩЕНИЕ</small><b>{me.wheel.freeAvailable ? '1 / 1' : '0 / 1'}</b></div><span>{me.wheel.freeAvailable ? 'Доступно сейчас' : `Ещё одно — ${me.wheel.paidCost} З`}</span></div>
+    <div className="wheel-status"><div><small>БЕСПЛАТНОЕ ВРАЩЕНИЕ</small><b>{me.wheel.freeAvailable ? '1 / 1' : '0 / 1'}</b></div><span>{me.wheel.freeAvailable ? 'Доступно сейчас' : 'Раз в 12 часов'}</span></div>
     <div className="wheel-wrap"><div className="wheel-pointer">▼</div><svg viewBox="0 0 200 200" className="wheel-svg" style={{transform:`rotate(${rotation}deg)`}}>
       {wheelLabels.map((label,i) => {
         const mid=i*seg+seg/2; const p=polar(100,100,65,mid);
         return <g key={label}><path d={sectorPath(i,wheelLabels.length)} className={`wheel-sector s${i}`}/><text x={p.x} y={p.y} transform={`rotate(${mid} ${p.x} ${p.y})`} className="wheel-text" textAnchor="middle">{label}</text></g>;
       })}
-      <circle cx="100" cy="100" r="23" className="wheel-hub"/><text x="100" y="104" textAnchor="middle" className="wheel-z">З</text>
+      <circle cx="100" cy="100" r="23" className="wheel-hub"/><text x="100" y="104" textAnchor="middle" className="wheel-z">₽</text>
     </svg></div>
     {reward && <div className="wheel-reward"><small>ВЫПАЛО</small><b>{reward}</b></div>}
-    <button className="primary" disabled={spinning} onClick={async () => {
+    <button className="primary" disabled={spinning || !me.wheel.freeAvailable} onClick={async () => {
       setSpinning(true); setReward('');
       try { const r=await api.spin(); setRotation(prev => (Math.floor(prev / 360) + 7) * 360 - (r.segmentIndex * seg + seg / 2)); setTimeout(async()=>{setReward(r.reward.label);haptic('success');await onChanged();setSpinning(false);},3000); }
       catch(e){alert(e instanceof Error?e.message:'Ошибка');setSpinning(false);}
-    }}>{spinning?'КРУТИМ…':me.wheel.freeAvailable?'КРУТИТЬ БЕСПЛАТНО':`КРУТИТЬ ЗА ${me.wheel.paidCost} З`}</button>
-    <p className="legal-note">Нет реальных денег, ставок и вывода средств — только игровая валюта.</p>
+    }}>{spinning?'КРУТИМ…':me.wheel.freeAvailable?'КРУТИТЬ БЕСПЛАТНО':'СЛЕДУЮЩЕЕ ЧЕРЕЗ 12 ЧАСОВ'}</button>
+    <p className="legal-note">Игровые ₽ нельзя купить, вывести или обменять на реальные деньги.</p>
   </section>;
 }
 
@@ -271,10 +271,10 @@ function Rating() {
   const [rows,setRows]=useState<LeaderRow[]>([]);
   const [mine,setMine]=useState({place:0,rating:0});
   useEffect(()=>{api.leaderboard(period).then(r=>{setRows(r.rows);setMine({place:r.myPlace,rating:r.myRating});});},[period]);
-  return <section className="screen"><div className="screen-title"><div><h2>ТОП ЗАЯВЩИКОВ</h2><p>Кто сегодня главный по бумагам</p></div></div>
+  return <section className="screen"><div className="screen-title"><div><h2>ТОП ЗАЯВЩИКОВ</h2><p>Только реальные активные пользователи</p></div></div>
     <div className="period-tabs">{[['day','День'],['week','Неделя'],['month','Месяц'],['all','Всё']].map(([v,l])=><button key={v} className={period===v?'active':''} onClick={()=>setPeriod(v)}>{l}</button>)}</div>
-    <div className="leaderboard">{rows.map((r,i)=><div className={`leader-row ${i<3?'top':''}`} key={`${r.username}-${r.place}`}><div className="leader-place">{i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${r.place}`}</div><div><b>@{r.username || r.first_name}</b><span>{format(r.rating)} RP</span></div></div>)}</div>
-    <div className="my-rank"><div><small>ТВОЁ МЕСТО</small><b>#{mine.place}</b></div><strong>{format(mine.rating)} RP</strong></div>
+    <div className="leaderboard">{rows.length===0 ? <div className="empty"><b>Пока нет активных игроков</b><span>В топ попадают только реальные Telegram-пользователи с активностью за последние 30 дней.</span></div> : rows.map((r,i)=><div className={'leader-row '+(i<3?'top':'')} key={(r.username||r.first_name)+'-'+r.place}><div className="leader-place">{i===0?<Crown size={20}/>:i<3?<Medal size={20}/>:'#'+r.place}</div><div><b>@{r.username || r.first_name}</b><span>{format(r.rating)} RP</span></div></div>)}</div>
+    <div className="my-rank"><div><small>ТВОЁ МЕСТО</small><b>{mine.place ? '#'+mine.place : '—'}</b></div><strong>{format(mine.rating)} RP</strong></div>
   </section>;
 }
 
