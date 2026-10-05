@@ -278,12 +278,14 @@ function Rating() {
   </section>;
 }
 
-function Profile({me}:{me:MePayload}) {
+function Profile({me,onAdmin}:{me:MePayload;onAdmin:()=>void}) {
   const u=me.user,s=me.stats;
   return <section className="screen"><div className="profile-head">{u.avatar_url?<img src={u.avatar_url}/>:<div className="avatar-fallback">{u.first_name[0]?.toUpperCase()}</div>}<div><h2>{u.first_name}</h2><p>@{u.username || 'telegram_user'}</p></div></div>
-    <div className="profile-rank"><small>ТВОЙ РАНГ</small><b>{u.rank_name}</b><span>{format(u.rating)} RP · место #{s.place}</span></div>
+    <div className="profile-rank"><small>ТВОЙ РАНГ</small><b>{u.rank_name}</b><span>{format(u.rating)} RP · место {s.place ? '#'+s.place : '—'}</span></div>
     <div className="stats-grid"><Stat n={s.statements} l="Заяв"/><Stat n={Math.round(s.avg_score)} l="Средняя"/><Stat n={s.best_score} l="Лучшая"/><Stat n={s.upgrades} l="Апгрейдов"/><Stat n={s.upgrade_wins} l="Успешных"/><Stat n={s.spins} l="Вращений"/></div>
+    {u.is_admin && <button className="admin-profile-button" onClick={onAdmin}><ShieldCheck size={19}/><div><b>Админ-панель</b><span>Просмотр всех игровых заяв</span></div><ChevronRight size={18}/></button>}
     <div className="disclaimer-card"><b>Это пародийная игра</b><p>Никакие формы из приложения не отправляются в МВД, полицию, Госуслуги или другие реальные организации.</p></div>
   </section>;
 }
+
 function Stat({n,l}:{n:number;l:string}){return <div className="stat"><b>{format(n)}</b><span>{l}</span></div>}
