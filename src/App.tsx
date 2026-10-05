@@ -5,8 +5,9 @@ import { api } from './api';
 import type { LeaderRow, MePayload, Statement } from './types';
 
 type Tab = 'zayava' | 'upgrade' | 'wheel' | 'rating' | 'profile' | 'admin';
+type IconName = 'file' | 'upgrade' | 'wheel' | 'cup' | 'user' | 'chev';
 
-const nav: { id: Tab; label: string; icon: string }[] = [
+const nav: { id: Tab; label: string; icon: IconName }[] = [
   { id: 'zayava', label: 'Заява', icon: 'file' },
   { id: 'upgrade', label: 'Апгрейд', icon: 'upgrade' },
   { id: 'wheel', label: 'Колесо', icon: 'wheel' },
@@ -15,7 +16,7 @@ const nav: { id: Tab; label: string; icon: string }[] = [
 ];
 
 const iconMap = { file: FileText, upgrade: CircleGauge, wheel: CircleDotDashed, cup: Trophy, user: UserRound, chev: ChevronRight };
-function Icon({ name, size = 22 }: { name: keyof typeof iconMap; size?: number }) {
+function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
   const Component = iconMap[name] || FileText;
   return <Component size={size} strokeWidth={1.9}/>;
 }
