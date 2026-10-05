@@ -139,7 +139,30 @@ app.post('/api/wheel/spin',(req:Request,res)=>{const user=db.prepare('SELECT * F
 app.get('/api/leaderboard',(req:Request,res)=>{const period=String(req.query.period||'all');const where=periodWhere(period);let rows:any[];let myRating:number;if(period==='all'){rows=db.prepare('SELECT id,username,first_name,rating FROM users ORDER BY rating DESC,id ASC LIMIT 50').all() as any[];myRating=(db.prepare('SELECT rating FROM users WHERE id=?').get(req.userId) as any).rating;}else{rows=db.prepare(`SELECT u.id,u.username,u.first_name,COALESCE(SUM(rh.amount),0) rating FROM users u LEFT JOIN rating_history rh ON rh.user_id=u.id ${where} GROUP BY u.id HAVING rating>0 ORDER BY rating DESC,u.id ASC LIMIT 50`).all() as any[];myRating=(db.prepare(`SELECT COALESCE(SUM(rh.amount),0) rating FROM rating_history rh WHERE rh.user_id=? ${where}`).get(req.userId) as any).rating;}const allScores=period==='all'?db.prepare('SELECT id,rating FROM users ORDER BY rating DESC,id ASC').all() as any[]:db.prepare(`SELECT u.id,COALESCE(SUM(rh.amount),0) rating FROM users u LEFT JOIN rating_history rh ON rh.user_id=u.id ${where} GROUP BY u.id ORDER BY rating DESC,u.id ASC`).all() as any[];const myPlace=Math.max(1,allScores.findIndex(x=>x.id===req.userId)+1);res.json({rows:rows.map((r,i)=>({place:i+1,username:r.username,first_name:r.first_name,rating:r.rating,is_me:r.id===req.userId})),myPlace,myRating});});
 
 if(process.env.NODE_ENV==='production'){
-  const dist=path.join(root,'dist'); app.use(express.static(dist)); app.use((req,res,next)=>{if(req.path.startsWith('/api'))return next();res.sendFile(path.join(dist,'index.html'));});
+  const dist=path.join(root,'dist');
+  const indexFile=path.join(dist,'index.html');
+
+  if(fs.existsSync(indexFile)){
+    console.log('Serving prebuilt frontend from dist/');
+    app.use(express.static(dist));
+    app.use((req,res,next)=>{
+      if(req.path.startsWith('/api')) return next();
+      res.sendFile(indexFile);
+    });
+  } else {
+    console.log('dist/index.html not found — starting Vite middleware fallback');
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      root,
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
+    app.use(vite.middlewares);
+  }
 }
-app.use((err:any,_req:Request,res:Response,_next:NextFunction)=>{console.error(err);res.status(500).json({error:'Внутренняя ошибка сервера'});});
+
+app.use((err:any,_req:Request,res:Response,_next:NextFunction)=>{
+  console.error(err);
+  res.status(500).json({error:'Внутренняя ошибка сервера'});
+});
 app.listen(port,()=>console.log(`Zayava app server: http://localhost:${port}`));
