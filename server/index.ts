@@ -200,24 +200,43 @@ function periodWhere(period:string){if(period==='day')return "AND rh.created_at 
 function secureFloat(){return crypto.randomInt(0,1_000_000)/1_000_000;}
 function pickWeighted<T extends {weight:number}>(arr:T[]){const total=arr.reduce((a,b)=>a+b.weight,0);let roll=secureFloat()*total;for(const item of arr){roll-=item.weight;if(roll<=0)return item;}return arr[arr.length-1];}
 app.get('/api/reasons',(_req,res)=>res.json({reasons,locations}));
-app.get('/api/statements',(req:Request,res)=>{const rows=db.prepare('SELECT id,category,location,description,score,rarity,value,created_at,is_active FROM statements WHERE user_id=? ORDER BY id DESC LIMIT 100').all(req.userId);res.json({statements:rows.map(serializeStatement)});});
+app.get('/api/statements',(req:Request,res)=>{const rows=db.prepare('SELECT id,category,location,description,target_user_id,target_username,target_name,score,score_breakdown,rarity,value,created_at,is_active FROM statements WHERE user_id=? ORDER BY id DESC LIMIT 100').all(req.userId);res.json({statements:rows.map(serializeStatement)});});
 app.get('/api/me',(req:Request,res)=>{
   const u=db.prepare('SELECT * FROM users WHERE id=?').get(req.userId) as any;
   const stats=db.prepare(`SELECT COUNT(*) statements,COALESCE(AVG(score),0) avg_score,COALESCE(MAX(score),0) best_score FROM statements WHERE user_id=?`).get(req.userId) as any;
   const up=db.prepare(`SELECT COUNT(*) upgrades,SUM(CASE WHEN result='win' THEN 1 ELSE 0 END) upgrade_wins FROM upgrades WHERE user_id=?`).get(req.userId) as any;
   const spins=(db.prepare('SELECT COUNT(*) c FROM wheel_spins WHERE user_id=?').get(req.userId) as any).c;
-  const place=(db.prepare('SELECT COUNT(*)+1 p FROM users WHERE rating>?').get(u.rating) as any).p;
+  const place=(db.prepare("SELECT COUNT(*)+1 p FROM users WHERE telegram_id>0 AND last_seen >= datetime('now','-30 days') AND rating>?").get(u.rating) as any).p;
   const last=db.prepare('SELECT created_at FROM wheel_spins WHERE user_id=? AND paid=0 ORDER BY id DESC LIMIT 1').get(req.userId) as any;
   const nextFreeAt=last?new Date(new Date(last.created_at+'Z').getTime()+12*3600e3):null; const freeAvailable=!nextFreeAt||nextFreeAt.getTime()<=Date.now();
-  res.json({user:{id:u.id,telegram_id:u.telegram_id,username:u.username,first_name:u.first_name,avatar_url:u.avatar_url,balance:u.balance,rating:u.rating,...getRank(u.rating)},stats:{...stats,upgrades:up.upgrades||0,upgrade_wins:up.upgrade_wins||0,spins,place},wheel:{freeAvailable,nextFreeAt:freeAvailable?null:nextFreeAt?.toISOString(),paidCost:250}});
+  res.json({user:{id:u.id,telegram_id:u.telegram_id,username:u.username,first_name:u.first_name,avatar_url:u.avatar_url,balance:u.balance,rating:u.rating,is_admin:isAdminUser(u),...getRank(u.rating)},stats:{...stats,upgrades:up.upgrades||0,upgrade_wins:up.upgrade_wins||0,spins,place},wheel:{freeAvailable,nextFreeAt:freeAvailable?null:nextFreeAt?.toISOString(),paidCost:0}});
 });
 
 app.post('/api/statements',(req:Request,res)=>{
-  const {category,location,description}=req.body||{}; if(!reasons.includes(category)||!locations.includes(location))return res.status(400).json({error:'Выбери причину и место из списка'}); if(typeof description!=='string'||description.trim().length<20||description.length>500)return res.status(400).json({error:'Описание должно быть от 20 до 500 символов'});
+  const {category,location,description,targetUserId,targetUsername,targetName}=req.body||{};
+  if(!reasons.includes(category)||!locations.includes(location)) return res.status(400).json({error:'Выбери причину и место из списка'});
+  if(typeof description!=='string'||description.trim().length<20||description.length>500) return res.status(400).json({error:'Описание должно быть от 20 до 500 символов'});
+  if(typeof targetName!=='string'||targetName.trim().length<1||targetName.trim().length>80) return res.status(400).json({error:'Выбери, на кого пишется игровая заява'});
+  if(targetUsername!=null && (typeof targetUsername!=='string'||targetUsername.length>40)) return res.status(400).json({error:'Некорректный username'});
+  const targetId=targetUserId==null?null:Number(targetUserId);
+  if(targetId!=null&&!Number.isSafeInteger(targetId)) return res.status(400).json({error:'Некорректный пользователь'});
+
   const dup=(db.prepare('SELECT COUNT(*) c FROM statements WHERE user_id=? AND lower(description)=lower(?)').get(req.userId,description.trim()) as any).c;
-  const score=scoreText(description,dup), r=rarity(score), value=score*50, reward=Math.max(50,score*5), ratingGain=score;
-  const tx=db.transaction(()=>{const info=db.prepare('INSERT INTO statements(user_id,category,location,description,score,rarity,value) VALUES(?,?,?,?,?,?,?)').run(req.userId,category,location,description.trim(),score,r,value);db.prepare('UPDATE users SET balance=balance+?, rating=rating+? WHERE id=?').run(reward,ratingGain,req.userId);db.prepare('INSERT INTO rating_history(user_id,amount,reason) VALUES(?,?,?)').run(req.userId,ratingGain,'statement');return Number(info.lastInsertRowid);});
-  const id=tx(); const s=db.prepare('SELECT id,category,location,description,score,rarity,value,created_at,is_active FROM statements WHERE id=?').get(id);res.json({statement:serializeStatement(s),reward:{rating:ratingGain,balance:reward},phrase:phrases[crypto.randomInt(phrases.length)]});
+  const evaluation=evaluateStatement(description,category,location,dup);
+  const score=evaluation.score, r=rarity(score), value=score*50;
+  const reward=Math.max(25,Math.round(score*4));
+  const ratingGain=Math.max(3,Math.round(score*0.65));
+
+  const tx=db.transaction(()=>{
+    const info=db.prepare('INSERT INTO statements(user_id,category,location,description,target_user_id,target_username,target_name,score,score_breakdown,rarity,value) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+      .run(req.userId,category,location,description.trim(),targetId,String(targetUsername||'').replace(/^@/,''),targetName.trim(),score,JSON.stringify(evaluation.breakdown),r,value);
+    db.prepare('UPDATE users SET balance=balance+?, rating=rating+? WHERE id=?').run(reward,ratingGain,req.userId);
+    db.prepare('INSERT INTO rating_history(user_id,amount,reason) VALUES(?,?,?)').run(req.userId,ratingGain,'statement');
+    return Number(info.lastInsertRowid);
+  });
+  const id=tx();
+  const row=db.prepare('SELECT id,category,location,description,target_user_id,target_username,target_name,score,score_breakdown,rarity,value,created_at,is_active FROM statements WHERE id=?').get(id);
+  res.json({statement:serializeStatement(row),reward:{rating:ratingGain,balance:reward},phrase:phrases[crypto.randomInt(phrases.length)]});
 });
 
 app.post('/api/upgrades/preview',(req:Request,res)=>{const sourceId=Number(req.body?.sourceId),multiplier=Number(req.body?.multiplier);if(![1.5,2,3,5].includes(multiplier))return res.status(400).json({error:'Неверный множитель'});const s=db.prepare('SELECT id,category,location,description,score,rarity,value,created_at,is_active FROM statements WHERE id=? AND user_id=? AND is_active=1').get(sourceId,req.userId) as any;if(!s)return res.status(404).json({error:'Заява не найдена'});const targetValue=Math.round(s.value*multiplier/50)*50,chance=Math.max(5,Math.min(90,(s.value/targetValue)*95));res.json({source:serializeStatement(s),targetValue,chance});});
