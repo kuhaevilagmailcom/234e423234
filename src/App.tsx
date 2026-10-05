@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronRight, CircleDotDashed, CircleGauge, FileText, ShieldCheck, Trophy, UserRound } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CircleDotDashed, CircleGauge, FileText, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import Admin from './Admin';
 import { api } from './api';
 import type { LeaderRow, MePayload, Statement } from './types';
@@ -91,30 +91,56 @@ function Intro({ onStart }: { onStart: () => void }) {
 }
 
 function Zayava({ me, statements, reasons, locations, onChanged }: { me: MePayload; statements: Statement[]; reasons: string[]; locations: string[]; onChanged: () => Promise<void> }) {
+  const receiver = window.Telegram?.WebApp.initDataUnsafe?.receiver;
+  const receiverName = receiver ? [receiver.first_name, receiver.last_name].filter(Boolean).join(' ') : '';
   const [mode, setMode] = useState<'home'|'form'|'result'>('home');
   const [category, setCategory] = useState(reasons[0] || 'слишком подозрительно молчит');
   const [location, setLocation] = useState(locations[0] || 'в Telegram');
   const [description, setDescription] = useState('');
   const [sending, setSending] = useState(false);
+  const [target, setTarget] = useState<{id?:number; username?:string; name:string}|null>(() => receiver ? { id: receiver.id, username: receiver.username, name: receiverName || receiver.username || 'Пользователь Telegram' } : null);
   const [result, setResult] = useState<{ statement: Statement; reward: { rating: number; balance: number }; phrase: string } | null>(null);
   const active = statements.filter(s => s.is_active);
 
+  useEffect(() => {
+    if(receiver) setTarget({ id: receiver.id, username: receiver.username, name: receiverName || receiver.username || 'Пользователь Telegram' });
+  }, [receiver?.id]);
+
+  function chooseFriend(){
+    const link='https://t.me/perekup_app_bot?startattach=zayava_target&choose=users';
+    if(window.Telegram?.WebApp.openTelegramLink) window.Telegram.WebApp.openTelegramLink(link);
+    else window.location.href=link;
+  }
+
   if (mode === 'form') return <section className="screen">
-    <div className="screen-title"><button className="back" onClick={() => setMode('home')}>‹</button><div><h2>НОВАЯ ЗАЯВА</h2><p>Заполни игровой бланк</p></div></div>
+    <div className="screen-title"><button className="back" onClick={() => setMode('home')} aria-label="Назад"><ArrowLeft size={20}/></button><div><h2>НОВАЯ ЗАЯВА</h2><p>Заполни игровой бланк</p></div></div>
     <div className="document-card">
-      <div className="doc-head"><small>В ОТДЕЛ ПОЛИЦИИ №1337</small><b>ЗАЯВЛЕНИЕ</b></div>
+      <div className="doc-head"><small>ИГРОВАЯ ПАРОДИЯ</small><b>ЗАЯВЛЕНИЕ</b></div>
       <label><span>От кого</span><div className="static-field">@{me.user.username || me.user.first_name}</div></label>
-      <label><span>На кого</span><div className="static-field">Лимузинов</div></label>
+      <label><span>На кого</span>
+        <div className={target ? 'target-card selected' : 'target-card'}>
+          <div className="target-avatar"><UserRound size={20}/></div>
+          <div><b>{target ? target.name : 'Никто не выбран'}</b><span>{target?.username ? '@'+target.username : 'Выбери человека из личных чатов'}</span></div>
+        </div>
+        <div className="target-actions">
+          <button type="button" onClick={chooseFriend}><UsersRound size={17}/>Выбрать друга из Telegram</button>
+          <button type="button" onClick={() => setTarget({ username:'limuzinov', name:'Лимузинов' })}><UserRound size={17}/>@limuzinov</button>
+        </div>
+      </label>
       <label><span>Причина</span><select value={category} onChange={e => setCategory(e.target.value)}>{reasons.map(r => <option key={r}>{r}</option>)}</select></label>
       <label><span>Место</span><select value={location} onChange={e => setLocation(e.target.value)}>{locations.map(r => <option key={r}>{r}</option>)}</select></label>
-      <label><span>Описание ситуации</span><textarea maxLength={500} value={description} onChange={e => setDescription(e.target.value)} placeholder="Опиши, что произошло. Минимум 20 символов."/><small className="counter">{description.length}/500</small></label>
+      <label><span>Описание ситуации</span><textarea maxLength={500} value={description} onChange={e => setDescription(e.target.value)} placeholder="Опиши событие последовательно: что произошло, когда, где, что было до и после."/><small className="counter">{description.length}/500</small></label>
     </div>
-    <button className="primary" disabled={description.trim().length < 20 || sending} onClick={async () => {
-      if (!confirm('Подать игровую заяву на Лимузинова? Никуда реально она не отправится.')) return;
-      try { setSending(true); const r = await api.createStatement({ category, location, description }); setResult(r); setMode('result'); haptic('success'); await onChanged(); }
-      catch (e) { alert(e instanceof Error ? e.message : 'Ошибка'); haptic('error'); } finally { setSending(false); }
-    }}>{sending ? 'ПОДАЁМ…' : 'ПОДАТЬ ЗАЯВУ'}</button>
-    <p className="legal-note">Игровая пародия. Заявление остаётся только внутри игры.</p>
+    <button className="primary" disabled={!target || description.trim().length < 20 || sending} onClick={async () => {
+      if (!target) return;
+      if (!confirm('Подать игровую заяву на '+target.name+'? Она никуда реально не отправится.')) return;
+      try {
+        setSending(true);
+        const r = await api.createStatement({ category, location, description, targetUserId: target.id ?? null, targetUsername: target.username ?? null, targetName: target.name });
+        setResult(r); setMode('result'); haptic('success'); await onChanged();
+      } catch (e) { alert(e instanceof Error ? e.message : 'Ошибка'); haptic('error'); } finally { setSending(false); }
+    }}>{sending ? 'ОЦЕНИВАЕМ…' : 'ПОДАТЬ ИГРОВУЮ ЗАЯВУ'}</button>
+    <p className="legal-note">Это пародийная игра. Не указывай реальные адреса, телефоны и другие личные данные.</p>
   </section>;
 
   if (mode === 'result' && result) return <section className="screen result-screen">
@@ -123,23 +149,29 @@ function Zayava({ me, statements, reasons, locations, onChanged }: { me: MePaylo
     <div className="score">{result.statement.score}<small>/100</small></div>
     <div className={rarityClass(result.statement.rarity)}>{result.statement.rarity}</div>
     <p className="result-phrase">«{result.phrase}»</p>
-    <div className="reward-grid"><div><small>РЕЙТИНГ</small><b>+{result.reward.rating} RP</b></div><div><small>НАГРАДА</small><b>+{format(result.reward.balance)} З</b></div></div>
+    <div className="score-breakdown">
+      {(result.statement.score_breakdown || []).map(item => <div className="score-row" key={item.key}>
+        <div><b>{item.label}</b><span>{item.note}</span></div>
+        <strong>{item.score}/{item.max}</strong>
+      </div>)}
+    </div>
+    <div className="reward-grid"><div><small>РЕЙТИНГ</small><b>+{result.reward.rating} RP</b></div><div><small>ИГРОВЫЕ РУБЛИ</small><b>+{format(result.reward.balance)} ₽</b></div></div>
     <button className="primary" onClick={() => { setDescription(''); setMode('home'); }}>ГОТОВО</button>
   </section>;
 
   return <section className="screen">
     <div className="hero-card">
       <span className="eyebrow">ТВОЙ СТАТУС</span>
-      <div className="rank-line"><div><h2>{me.user.rank_name}</h2><p>{format(me.user.rating)} RP</p></div><div className="place">#{me.stats.place}</div></div>
-      <div className="progress"><span style={{width: `${me.user.rank_progress}%`}}/></div>
-      <small>{me.user.next_rank_at ? `До следующего ранга ${format(Math.max(0, me.user.next_rank_at - me.user.rating))} RP` : 'Максимальный ранг'}</small>
+      <div className="rank-line"><div><h2>{me.user.rank_name}</h2><p>{format(me.user.rating)} RP</p></div><div className="place">#{me.stats.place || '—'}</div></div>
+      <div className="progress"><span style={{width: String(me.user.rank_progress)+'%'}}/></div>
+      <small>{me.user.next_rank_at ? 'До следующего ранга '+format(Math.max(0, me.user.next_rank_at - me.user.rating))+' RP' : 'Максимальный ранг'}</small>
     </div>
 
-    <button className="new-case" onClick={() => setMode('form')}><div className="case-icon"><Icon name="file" size={28}/></div><div><b>НАПИСАТЬ ЗАЯВУ</b><span>Получи оценку, RP и заявкоины</span></div><Icon name="chev"/></button>
+    <button className="new-case" onClick={() => setMode('form')}><div className="case-icon"><Icon name="file" size={28}/></div><div><b>НАПИСАТЬ ЗАЯВУ</b><span>Получи оценку, RP и игровые ₽</span></div><Icon name="chev"/></button>
 
     <div className="section-head"><div><h3>МОИ ЗАЯВЫ</h3><span>{active.length} активных</span></div></div>
     <div className="statement-list">
-      {active.length === 0 ? <div className="empty"><b>Пока ни одной заявы</b><span>Самое время исправить.</span></div> : active.slice(0,8).map(s => <StatementRow key={s.id} s={s}/>) }
+      {active.length === 0 ? <div className="empty"><b>Пока ни одной заявы</b><span>Самое время исправить.</span></div> : active.slice(0,8).map(item => <StatementRow key={item.id} s={item}/>) }
     </div>
   </section>;
 }
