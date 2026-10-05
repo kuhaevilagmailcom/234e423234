@@ -113,13 +113,92 @@ function auth(req:Request,res:Response,next:NextFunction){
 app.use('/api',auth);
 
 function getRank(rating:number){let cur=ranks[0],next:null|typeof ranks[number]=null;for(let i=0;i<ranks.length;i++){if(rating>=ranks[i].min)cur=ranks[i];else{next=ranks[i];break;}}const base=cur.min;const progress=next?Math.max(0,Math.min(100,((rating-base)/(next.min-base))*100)):100;return {rank_name:cur.name,next_rank_at:next?.min??null,rank_progress:progress};}
-function rarity(score:number){if(score>=100)return 'Золотая';if(score>=95)return 'Особо важная';if(score>=80)return 'Легендарная';if(score>=60)return 'Эпическая';if(score>=40)return 'Редкая';return 'Обычная';}
-function serializeStatement(s:any){return {...s,is_active:Number(s.is_active)};}
-function scoreText(text:string,duplicateCount:number){const clean=text.trim();const words=clean.toLowerCase().split(/\s+/).filter(Boolean);const unique=new Set(words).size;let score=25;score+=Math.min(30,Math.floor(clean.length/8));score+=Math.min(25,unique*2);if(clean.length>=80)score+=8;if(/[.!?]/.test(clean))score+=4;if(/(.)\1{5,}/i.test(clean))score-=35;if(unique<=2)score-=30;if(duplicateCount>0)score-=20;return Math.max(5,Math.min(100,score));}
+function rarity(score:number){if(score>=100)return 'Золотая';if(score>=97)return 'Особо важная';if(score>=90)return 'Легендарная';if(score>=75)return 'Эпическая';if(score>=55)return 'Редкая';return 'Обычная';}
+function serializeStatement(row:any){
+  let score_breakdown:any[]=[];
+  try{score_breakdown=row.score_breakdown?JSON.parse(row.score_breakdown):[];}catch{}
+  return {...row,score_breakdown,is_active:Number(row.is_active)};
+}
+function isAdminUser(u:any){
+  if(!u) return false;
+  const username=String(u.username||'').replace(/^@/,'').toLowerCase();
+  return adminTelegramIds.has(Number(u.telegram_id)) || adminUsernames.has(username) || (process.env.NODE_ENV!=='production' && username==='demo_user');
+}
+function requireAdmin(req:Request,res:Response,next:NextFunction){
+  const u=db.prepare('SELECT telegram_id,username FROM users WHERE id=?').get(req.userId) as any;
+  if(!isAdminUser(u)) return res.status(403).json({error:'Нет доступа к админке'});
+  next();
+}
+function normalizeWord(word:string){
+  return word.toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]/gi,'').replace(/(иями|ями|ами|ого|ему|ыми|ими|ая|яя|ое|ее|ые|ие|ый|ий|ой|ую|юю|ах|ях|ам|ям|ов|ев|ом|ем|ить|ать|ять|ться|ся)$/u,'');
+}
+const stopWords=new Set(['это','как','что','когда','тогда','потом','было','была','были','очень','просто','меня','тебя','него','нее','ему','она','они','там','тут','для','или','при','над','под','без','про','его','еще','уже','мне','мной','который','которая']);
+function tokenize(text:string){return (text.toLowerCase().match(/[a-zа-яё0-9]+/giu)||[]).map(normalizeWord).filter(w=>w.length>=2&&!stopWords.has(w));}
+function evaluateStatement(text:string,category:string,location:string,duplicateCount:number){
+  const clean=text.trim().replace(/\s+/g,' ');
+  const rawWords=clean.toLowerCase().match(/[a-zа-яё0-9]+/giu)||[];
+  const words=tokenize(clean);
+  const unique=new Set(words);
+  const categoryWords=[...new Set(tokenize(category).filter(w=>w.length>=3))];
+  const sentences=clean.split(/[.!?]+/).map(v=>v.trim()).filter(Boolean);
+  const overlap=categoryWords.filter(c=>[...unique].some(w=>w===c||w.startsWith(c)||c.startsWith(w))).length;
+  const relevanceRatio=categoryWords.length?overlap/categoryWords.length:0;
+  const locationWords=tokenize(location);
+  const locationMention=locationWords.some(l=>[...unique].some(w=>w===l||w.startsWith(l)||l.startsWith(w)));
+
+  const hasTime=/\b(\d{1,2}[:.]\d{2}|утром|днем|днём|вечером|ночью|сегодня|вчера|позавчера|час|минут|секунд)\b/iu.test(clean);
+  const hasSequence=/\b(сначала|затем|потом|после|до этого|в этот момент|когда|далее)\b/iu.test(clean);
+  const hasEvidence=/\b(скрин|скриншот|сообщен|переписк|фото|видео|чек|свидетел|запис|голосов|кружок)\w*/iu.test(clean);
+  const hasCause=/\b(потому|поэтому|из-за|причин|после того|так как)\b/iu.test(clean);
+  const hasQuote=/[«»\"']/u.test(clean);
+  const hasNumber=/\d/u.test(clean);
+
+  const repeatedChars=/(.)\1{4,}/iu.test(clean);
+  const capsLetters=clean.match(/[A-ZА-ЯЁ]/g)?.length||0;
+  const allLetters=clean.match(/[A-Za-zА-Яа-яЁё]/g)?.length||1;
+  const capsRatio=capsLetters/allLetters;
+  const counts=new Map<string,number>(); words.forEach(w=>counts.set(w,(counts.get(w)||0)+1));
+  const maxWordRepeat=Math.max(0,...counts.values());
+  const repeatRatio=words.length?maxWordRepeat/words.length:1;
+  const uniqueRatio=words.length?unique.size/words.length:0;
+
+  const relevance=Math.min(25,Math.round(relevanceRatio*20)+(locationMention?5:0));
+  const specifics=Math.min(20,(hasTime?4:0)+(hasSequence?4:0)+(hasEvidence?4:0)+(hasCause?3:0)+(hasQuote?2:0)+(hasNumber?3:0));
+  const structure=Math.min(15,Math.round(Math.min(sentences.length,4)/4*8)+(clean.includes(',')?3:0)+(clean.length>=140?4:0));
+  const detail=Math.min(15,Math.round(Math.min(rawWords.length,45)/45*15));
+  const vocabulary=Math.min(10,Math.round(Math.min(uniqueRatio,0.8)/0.8*10));
+
+  let coherence=15;
+  const penalties:string[]=[];
+  if(repeatedChars){coherence-=6;penalties.push('повторяющиеся символы');}
+  if(capsRatio>.6&&allLetters>20){coherence-=4;penalties.push('слишком много CAPS');}
+  if(repeatRatio>.24&&words.length>10){coherence-=5;penalties.push('одно и то же слово повторяется слишком часто');}
+  if(duplicateCount>0){coherence-=8;penalties.push('такой текст уже подавался');}
+  if(rawWords.length<8){coherence-=6;penalties.push('слишком мало слов');}
+  coherence=Math.max(0,coherence);
+
+  let score=relevance+specifics+structure+detail+vocabulary+coherence;
+  if(rawWords.length<12) score=Math.min(score,52);
+  if(rawWords.length<20||relevance<10||specifics<4) score=Math.min(score,69);
+  if(rawWords.length<28||relevance<15||specifics<8||sentences.length<2) score=Math.min(score,84);
+  if(rawWords.length<38||relevance<18||specifics<12||sentences.length<3||uniqueRatio<0.5) score=Math.min(score,93);
+  if(rawWords.length<50||relevance<21||specifics<15||sentences.length<3||uniqueRatio<0.58) score=Math.min(score,97);
+  if(duplicateCount>0) score=Math.min(score,64);
+  score=Math.max(5,Math.min(100,Math.round(score)));
+
+  const breakdown=[
+    {key:'relevance',label:'Соответствие теме',score:relevance,max:25,note:relevance>=18?'Описание хорошо связано с выбранной причиной':'Раскрой выбранную причину прямо в тексте'},
+    {key:'specifics',label:'Конкретные детали',score:specifics,max:20,note:specifics>=12?'Есть время, последовательность или подтверждающие детали':'Добавь когда, где, что было до/после и конкретные детали'},
+    {key:'structure',label:'Структура',score:structure,max:15,note:structure>=11?'События описаны понятно':'Разбей историю на несколько последовательных предложений'},
+    {key:'detail',label:'Подробность',score:detail,max:15,note:rawWords.length>=28?'Объём достаточный':'Сейчас '+rawWords.length+' слов — для высокой оценки нужно заметно больше'},
+    {key:'vocabulary',label:'Разнообразие текста',score:vocabulary,max:10,note:vocabulary>=8?'Мало бессмысленных повторов':'Избегай повторения одних и тех же слов'},
+    {key:'coherence',label:'Качество текста',score:coherence,max:15,note:penalties.length?'Штраф: '+penalties.join(', '):'Спам и явные повторы не обнаружены'}
+  ];
+  return {score,breakdown};
+}
 function periodWhere(period:string){if(period==='day')return "AND rh.created_at >= datetime('now','-1 day')";if(period==='week')return "AND rh.created_at >= datetime('now','-7 days')";if(period==='month')return "AND rh.created_at >= datetime('now','-30 days')";return '';}
 function secureFloat(){return crypto.randomInt(0,1_000_000)/1_000_000;}
 function pickWeighted<T extends {weight:number}>(arr:T[]){const total=arr.reduce((a,b)=>a+b.weight,0);let roll=secureFloat()*total;for(const item of arr){roll-=item.weight;if(roll<=0)return item;}return arr[arr.length-1];}
-
 app.get('/api/reasons',(_req,res)=>res.json({reasons,locations}));
 app.get('/api/statements',(req:Request,res)=>{const rows=db.prepare('SELECT id,category,location,description,score,rarity,value,created_at,is_active FROM statements WHERE user_id=? ORDER BY id DESC LIMIT 100').all(req.userId);res.json({statements:rows.map(serializeStatement)});});
 app.get('/api/me',(req:Request,res)=>{
