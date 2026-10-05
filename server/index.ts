@@ -41,7 +41,25 @@ const reasons = Array.from({length:100}, (_,i) => {
   const v=verbs[i%verbs.length], o=objects[Math.floor(i/verbs.length)%objects.length];
   return `${v} ${o}`;
 });
-const phrases = ['Участковый впечатлён.','Лимузинову уже неспокойно.','Очень убедительная заява.','Не хватает деталей, но принято.','Вот это уже серьёзный документ.','Бумага легла на стол идеально.','Материал зарегистрирован в игровой базе.'];
+const phrases = ['Участковый впечатлён.','Материал выглядит подробно.','Тема раскрыта последовательно.','Не хватает конкретики, но принято.','Хорошо описана последовательность событий.','Документ зарегистрирован в игровой базе.','Оценка рассчитана по содержанию и деталям.'];
+
+const adminUsernames = new Set(
+  (process.env.ADMIN_USERNAMES || 'limuzinov')
+    .split(',')
+    .map(v => v.trim().replace(/^@/, '').toLowerCase())
+    .filter(Boolean)
+);
+const adminTelegramIds = new Set(
+  (process.env.ADMIN_TELEGRAM_IDS || '')
+    .split(',')
+    .map(v => Number(v.trim()))
+    .filter(Number.isFinite)
+);
+
+function ensureColumn(table:string,column:string,definition:string){
+  const cols=db.prepare('PRAGMA table_info('+table+')').all() as Array<{name:string}>;
+  if(!cols.some(c=>c.name===column)) db.exec('ALTER TABLE '+table+' ADD COLUMN '+column+' '+definition);
+}
 
 function initDb(){
   db.exec(`
@@ -53,14 +71,13 @@ function initDb(){
     CREATE INDEX IF NOT EXISTS idx_statements_user_active ON statements(user_id,is_active);
     CREATE INDEX IF NOT EXISTS idx_rating_history_user_date ON rating_history(user_id,created_at);
     CREATE INDEX IF NOT EXISTS idx_wheel_user_date ON wheel_spins(user_id,created_at);
+    CREATE INDEX IF NOT EXISTS idx_users_activity ON users(last_seen,telegram_id);
   `);
-  const seed = ['limuzinov','sosal','mama','papa','dedyska','ufc','nft','gif','vid','pic','vasya','petya','kolyan','bratik','legend'];
-  const exists = db.prepare('SELECT COUNT(*) c FROM users WHERE telegram_id < 0').get() as {c:number};
-  if (!exists.c) {
-    const ins=db.prepare('INSERT INTO users(telegram_id,username,first_name,balance,rating) VALUES(?,?,?,?,?)');
-    const hist=db.prepare('INSERT INTO rating_history(user_id,amount,reason,created_at) VALUES(?,?,?,datetime(\'now\', ?))');
-    const tx=db.transaction(()=>seed.forEach((name,i)=>{const rating=450+((i*1173)%18500);const r=ins.run(-(i+1),name,name,5000,rating);hist.run(r.lastInsertRowid,rating,'seed',`-${i%25} days`);}));tx();
-  }
+  ensureColumn('statements','target_user_id','INTEGER');
+  ensureColumn('statements','target_username','TEXT');
+  ensureColumn('statements','target_name','TEXT');
+  ensureColumn('statements','score_breakdown','TEXT');
+  db.prepare('DELETE FROM users WHERE telegram_id < 0').run();
 }
 initDb();
 
