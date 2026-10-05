@@ -1,5 +1,13 @@
 export type Rarity = 'Обычная' | 'Редкая' | 'Эпическая' | 'Легендарная' | 'Особо важная' | 'Золотая';
 
+export interface ScoreBreakdownItem {
+  key: string;
+  label: string;
+  score: number;
+  max: number;
+  note: string;
+}
+
 export interface User {
   id: number;
   telegram_id: number;
@@ -11,6 +19,7 @@ export interface User {
   rank_name: string;
   next_rank_at: number | null;
   rank_progress: number;
+  is_admin?: boolean;
 }
 
 export interface Statement {
@@ -18,7 +27,11 @@ export interface Statement {
   category: string;
   location: string;
   description: string;
+  target_user_id?: number | null;
+  target_username?: string | null;
+  target_name?: string | null;
   score: number;
+  score_breakdown?: ScoreBreakdownItem[];
   rarity: Rarity;
   value: number;
   created_at: string;
@@ -47,4 +60,10 @@ export interface MePayload {
   user: User;
   stats: Stats;
   wheel: { freeAvailable: boolean; nextFreeAt: string | null; paidCost: number };
+}
+
+export interface AdminStatement extends Statement {
+  author_username: string;
+  author_name: string;
+  author_telegram_id: number;
 }
