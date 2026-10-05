@@ -23,10 +23,10 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
-      - name: Hosting startup smoke test
+      - name: FuraDev direct-server smoke test without dist
         run: |
           rm -rf dist
-          PORT=8787 node start.mjs > /tmp/zayava.log 2>&1 &
+          NODE_ENV=production PORT=8787 npx tsx server/index.ts > /tmp/zayava.log 2>&1 &
           APP_PID=$!
           for i in {1..30}; do
             if curl --fail --silent http://127.0.0.1:8787/ > /tmp/zayava-index.html; then
