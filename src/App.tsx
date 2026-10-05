@@ -55,7 +55,10 @@ export default function App() {
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><span className="brand-mark">З</span><div><b>ЗАЯВА</b><small>на Лимузинова</small></div></div>
-      <div className="balance"><span>З</span>{format(me.user.balance)}</div>
+      <div className="header-actions">
+        {me.user.is_admin && <button className="admin-entry" onClick={() => setTab('admin')} aria-label="Админка"><ShieldCheck size={19}/></button>}
+        <div className="balance"><span>₽</span>{format(me.user.balance)}</div>
+      </div>
     </header>
 
     <main className="content">
@@ -64,7 +67,8 @@ export default function App() {
       {tab === 'upgrade' && <Upgrade statements={statements.filter(s => s.is_active)} onChanged={refresh} />}
       {tab === 'wheel' && <Wheel me={me} onChanged={refresh} />}
       {tab === 'rating' && <Rating />}
-      {tab === 'profile' && <Profile me={me} />}
+      {tab === 'profile' && <Profile me={me} onAdmin={() => setTab('admin')} />}
+      {tab === 'admin' && me.user.is_admin && <Admin onBack={() => setTab('profile')} />}
     </main>
 
     <nav className="bottom-nav">
