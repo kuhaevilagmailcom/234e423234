@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { ChevronRight, CircleDotDashed, CircleGauge, FileText, ShieldCheck, Trophy, UserRound } from 'lucide-react';
+import Admin from './Admin';
 import { api } from './api';
 import type { LeaderRow, MePayload, Statement } from './types';
 
-type Tab = 'zayava' | 'upgrade' | 'wheel' | 'rating' | 'profile';
+type Tab = 'zayava' | 'upgrade' | 'wheel' | 'rating' | 'profile' | 'admin';
 
 const nav: { id: Tab; label: string; icon: string }[] = [
   { id: 'zayava', label: 'Заява', icon: 'file' },
@@ -12,15 +14,10 @@ const nav: { id: Tab; label: string; icon: string }[] = [
   { id: 'profile', label: 'Профиль', icon: 'user' },
 ];
 
-function Icon({ name, size = 22 }: { name: string; size?: number }) {
-  const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  if (name === 'file') return <svg {...common}><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v5h5"/><path d="M10 13h5M10 17h5"/></svg>;
-  if (name === 'upgrade') return <svg {...common}><path d="M6 17 17 6"/><path d="M10 6h7v7"/><path d="M5 7v12h12"/></svg>;
-  if (name === 'wheel') return <svg {...common}><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16M6.4 6.4l11.2 11.2M17.6 6.4 6.4 17.6"/></svg>;
-  if (name === 'cup') return <svg {...common}><path d="M8 4h8v4a4 4 0 0 1-8 0z"/><path d="M8 6H5v2a4 4 0 0 0 4 4M16 6h3v2a4 4 0 0 1-4 4M12 12v5M9 20h6"/></svg>;
-  if (name === 'user') return <svg {...common}><circle cx="12" cy="8" r="4"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/></svg>;
-  if (name === 'chev') return <svg {...common}><path d="m9 6 6 6-6 6"/></svg>;
-  return null;
+const iconMap = { file: FileText, upgrade: CircleGauge, wheel: CircleDotDashed, cup: Trophy, user: UserRound, chev: ChevronRight };
+function Icon({ name, size = 22 }: { name: keyof typeof iconMap; size?: number }) {
+  const Component = iconMap[name] || FileText;
+  return <Component size={size} strokeWidth={1.9}/>;
 }
 
 function format(n: number) { return new Intl.NumberFormat('ru-RU').format(Math.round(n)); }
