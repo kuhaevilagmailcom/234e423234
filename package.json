@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k \"vite --host 0.0.0.0\" \"tsx watch server/index.ts\"",
     "build": "tsc --noEmit && vite build",
-    "start": "NODE_ENV=production tsx server/index.ts"
+    "start": "node start.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.1",
@@ -30,5 +30,6 @@
     "concurrently": "^9.1.2",
     "typescript": "^5.8.2",
     "vite": "^6.2.2"
-  }
+  },
+  "main": "start.mjs"
 }
