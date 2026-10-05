@@ -150,7 +150,7 @@ function evaluateStatement(text:string,category:string,location:string,duplicate
   const hasSequence=/\b(сначала|затем|потом|после|до этого|в этот момент|когда|далее)\b/iu.test(clean);
   const hasEvidence=/\b(скрин|скриншот|сообщен|переписк|фото|видео|чек|свидетел|запис|голосов|кружок)\w*/iu.test(clean);
   const hasCause=/\b(потому|поэтому|из-за|причин|после того|так как)\b/iu.test(clean);
-  const hasQuote=/[«»\"']/u.test(clean);
+  const hasQuote=/[«»"']/u.test(clean);
   const hasNumber=/\d/u.test(clean);
 
   const repeatedChars=/(.)\1{4,}/iu.test(clean);
